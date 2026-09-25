@@ -1,0 +1,149 @@
+<template>
+    <lightning-card title={title} icon-name="standard:merge">
+        <div class="slds-var-p-horizontal_medium merge-container">
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={errorMessage}>
+                <div class="slds-notify slds-notify_alert slds-alert_error slds-var-m-bottom_small" role="alert">
+                    <h2>{errorMessage}</h2>
+                </div>
+            </template>
+
+            <lightning-record-picker
+                label="Record to merge with"
+                placeholder="Search..."
+                object-api-name={objectApiName}
+                filter={pickerFilter}
+                value={selectedRecordId}
+                onchange={handleRecordSelect}>
+            </lightning-record-picker>
+
+            <template lwc:if={comparison}>
+                <lightning-radio-group
+                    class="slds-var-m-top_medium slds-show"
+                    name="masterRecord"
+                    label="Master record (the record that is kept)"
+                    options={masterOptions}
+                    value={masterKey}
+                    onchange={handleMasterChange}>
+                </lightning-radio-group>
+
+                <div class="slds-grid slds-wrap slds-grid_vertical-align-center slds-var-m-top_medium">
+                    <div class="slds-col slds-grow">
+                        <lightning-input
+                            type="toggle"
+                            label={differenceCountLabel}
+                            checked={showOnlyDifferences}
+                            message-toggle-active=""
+                            message-toggle-inactive=""
+                            onchange={handleShowOnlyDifferences}>
+                        </lightning-input>
+                    </div>
+                    <div class="slds-col slds-grow-none">
+                        <lightning-button-group>
+                            <lightning-button label="Use all from master" onclick={handleUseAllMaster}></lightning-button>
+                            <lightning-button label="Use all from other" onclick={handleUseAllOther}></lightning-button>
+                        </lightning-button-group>
+                    </div>
+                </div>
+
+                <template lwc:if={hasRows}>
+                    <div class="slds-scrollable_x slds-var-m-top_small">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_fixed-layout" aria-label="Field comparison">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col" class="merge-field-column">
+                                        <div class="slds-truncate">Field</div>
+                                    </th>
+                                    <th scope="col">
+                                        <div class="slds-truncate" title={masterName}>Master: {masterName}</div>
+                                    </th>
+                                    <th scope="col">
+                                        <div class="slds-truncate" title={otherName}>Will be deleted: {otherName}</div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={rows} for:item="row">
+                                    <tr key={row.key} class={row.rowClass}>
+                                        <th scope="row">
+                                            <div class="slds-truncate" title={row.label}>{row.label}</div>
+                                        </th>
+                                        <td>
+                                            <span class="slds-radio">
+                                                <input
+                                                    type="radio"
+                                                    id={row.master.inputId}
+                                                    name={row.radioName}
+                                                    value={row.master.side}
+                                                    data-field={row.key}
+                                                    data-side={row.master.side}
+                                                    checked={row.master.checked}
+                                                    onchange={handleValueSelect} />
+                                                <label class="slds-radio__label" for={row.master.inputId}>
+                                                    <span class="slds-radio_faux"></span>
+                                                    <span class={row.master.displayClass}>{row.master.display}</span>
+                                                </label>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="slds-radio">
+                                                <input
+                                                    type="radio"
+                                                    id={row.other.inputId}
+                                                    name={row.radioName}
+                                                    value={row.other.side}
+                                                    data-field={row.key}
+                                                    data-side={row.other.side}
+                                                    checked={row.other.checked}
+                                                    onchange={handleValueSelect} />
+                                                <label class="slds-radio__label" for={row.other.inputId}>
+                                                    <span class="slds-radio_faux"></span>
+                                                    <span class={row.other.displayClass}>{row.other.display}</span>
+                                                </label>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="slds-var-m-top_small slds-text-color_weak">These records have the same value in every field you can edit.</p>
+                </template>
+
+                <div class="slds-box slds-theme_shade slds-var-m-top_medium">
+                    <h3 class="slds-text-heading_small slds-var-m-bottom_x-small">Related records</h3>
+                    <template lwc:if={hasRelatedToMove}>
+                        <p>{relatedTotal} related record(s) will be moved to {masterName}:</p>
+                        <ul class="slds-list_dotted">
+                            <template for:each={relatedToMove} for:item="item">
+                                <li key={item.key}>{item.label}: {item.count}</li>
+                            </template>
+                        </ul>
+                    </template>
+                    <template lwc:else>
+                        <p>{otherName} has no related records to move.</p>
+                    </template>
+                    <template lwc:if={isSummaryIncomplete}>
+                        <p class="slds-text-color_error slds-var-m-top_x-small">
+                            Not every related object could be counted. All related records will still be moved during the merge.
+                        </p>
+                    </template>
+                </div>
+
+                <div class="slds-var-m-top_medium slds-text-align_right">
+                    <lightning-button
+                        variant="destructive"
+                        label="Merge Records"
+                        disabled={isLoading}
+                        onclick={handleMerge}>
+                    </lightning-button>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

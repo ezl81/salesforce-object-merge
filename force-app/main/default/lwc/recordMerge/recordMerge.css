@@ -1,0 +1,22 @@
+.merge-container {
+    position: relative;
+}
+
+.merge-field-column {
+    width: 30%;
+}
+
+.merge-row_different > th,
+.merge-row_different > td {
+    background-color: var(--slds-g-color-warning-container-1, #fef1ee);
+}
+
+.merge-value {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.merge-value_blank {
+    font-style: italic;
+    color: var(--slds-g-color-on-surface-1, #706e6b);
+}
