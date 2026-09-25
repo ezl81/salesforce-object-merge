@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="470" viewBox="0 0 820 470" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="820" height="470" fill="#f3f3f3"/>
+
+  <!-- Card -->
+  <rect x="16" y="16" width="560" height="438" rx="6" fill="#ffffff" stroke="#dddbda"/>
+
+  <!-- Toggle + buttons -->
+  <rect x="32" y="34" width="40" height="22" rx="11" fill="#0176d3"/>
+  <circle cx="61" cy="45" r="8" fill="#ffffff"/>
+  <text x="82" y="50" fill="#181818">Show only differences (3)</text>
+  <rect x="300" y="30" width="130" height="30" rx="4" fill="#ffffff" stroke="#c9c9c9"/>
+  <text x="365" y="50" fill="#0176d3" text-anchor="middle">Use all from master</text>
+  <rect x="430" y="30" width="130" height="30" rx="4" fill="#ffffff" stroke="#c9c9c9"/>
+  <text x="495" y="50" fill="#0176d3" text-anchor="middle">Use all from other</text>
+
+  <!-- Table header -->
+  <rect x="32" y="74" width="528" height="32" fill="#f3f3f3" stroke="#e5e5e5"/>
+  <text x="44" y="95" font-weight="700" fill="#444444">Field</text>
+  <text x="196" y="95" font-weight="700" fill="#444444">Master: Acme Corp</text>
+  <text x="380" y="95" font-weight="700" fill="#444444">Will be deleted: Acme Corpor…</text>
+
+  <!-- Row 1: Phone, master chosen -->
+  <rect x="32" y="106" width="528" height="40" fill="#fef1ee" stroke="#e5e5e5"/>
+  <text x="44" y="131" fill="#181818">Phone</text>
+  <circle cx="204" cy="126" r="8" fill="#ffffff" stroke="#0176d3" stroke-width="1.5"/><circle cx="204" cy="126" r="4" fill="#0176d3"/>
+  <text x="220" y="131" fill="#181818">(555) 010-0100</text>
+  <circle cx="388" cy="126" r="8" fill="#ffffff" stroke="#939393" stroke-width="1.5"/>
+  <text x="404" y="131" fill="#181818">(555) 010-0199</text>
+
+  <!-- Row 2: Website, master blank -> other chosen by default -->
+  <rect x="32" y="146" width="528" height="40" fill="#fef1ee" stroke="#e5e5e5"/>
+  <text x="44" y="171" fill="#181818">Website</text>
+  <circle cx="204" cy="166" r="8" fill="#ffffff" stroke="#939393" stroke-width="1.5"/>
+  <text x="220" y="171" fill="#706e6b" font-style="italic">(blank)</text>
+  <circle cx="388" cy="166" r="8" fill="#ffffff" stroke="#0176d3" stroke-width="1.5"/><circle cx="388" cy="166" r="4" fill="#0176d3"/>
+  <text x="404" y="171" fill="#181818">www.acme.com</text>
+
+  <!-- Row 3: Industry, user switched to other -->
+  <rect x="32" y="186" width="528" height="40" fill="#fef1ee" stroke="#e5e5e5"/>
+  <text x="44" y="211" fill="#181818">Industry</text>
+  <circle cx="204" cy="206" r="8" fill="#ffffff" stroke="#939393" stroke-width="1.5"/>
+  <text x="220" y="211" fill="#181818">Manufacturing</text>
+  <circle cx="388" cy="206" r="8" fill="#ffffff" stroke="#0176d3" stroke-width="1.5"/><circle cx="388" cy="206" r="4" fill="#0176d3"/>
+  <text x="404" y="211" fill="#181818">Technology</text>
+
+  <!-- Related records -->
+  <rect x="32" y="244" width="528" height="120" rx="4" fill="#f3f3f3" stroke="#dddbda"/>
+  <text x="46" y="268" font-weight="700" font-size="14" fill="#181818">Related records</text>
+  <text x="46" y="292" fill="#181818">7 related record(s) will be moved to Acme Corp:</text>
+  <text x="56" y="316" fill="#181818">• Contacts (Account ID): 4</text>
+  <text x="56" y="338" fill="#181818">• Opportunities (Account ID): 3</text>
+
+  <!-- Merge button -->
+  <rect x="436" y="390" width="124" height="34" rx="4" fill="#ba0517"/>
+  <text x="498" y="412" fill="#ffffff" font-weight="600" text-anchor="middle">Merge Records</text>
+
+  <!-- Callouts -->
+  <g font-weight="700" fill="#ffffff" text-anchor="middle">
+    <circle cx="576" cy="45" r="12" fill="#e8590c"/><text x="576" y="50">3</text>
+    <circle cx="576" cy="166" r="12" fill="#e8590c"/><text x="576" y="171">4</text>
+    <circle cx="576" cy="304" r="12" fill="#e8590c"/><text x="576" y="309">5</text>
+    <circle cx="576" cy="407" r="12" fill="#e8590c"/><text x="576" y="412">6</text>
+  </g>
+  <g fill="#444444">
+    <text x="598" y="41" font-weight="700" fill="#181818">Bulk choices</text>
+    <text x="598" y="58">Filter to differing fields, or</text>
+    <text x="598" y="74">take every value from one side.</text>
+
+    <text x="598" y="130" font-weight="700" fill="#181818">Pick a value per field</text>
+    <text x="598" y="148">The selected radio wins. By</text>
+    <text x="598" y="164">default the master's value is</text>
+    <text x="598" y="180">kept unless it is blank and the</text>
+    <text x="598" y="196">other record has a value.</text>
+
+    <text x="598" y="296" font-weight="700" fill="#181818">Review related records</text>
+    <text x="598" y="314">Children of the deleted record</text>
+    <text x="598" y="330">move to the master.</text>
+
+    <text x="598" y="404" font-weight="700" fill="#181818">Merge and confirm</text>
+    <text x="598" y="421">A confirmation dialog appears</text>
+    <text x="598" y="437">before anything changes.</text>
+  </g>
+</svg>
