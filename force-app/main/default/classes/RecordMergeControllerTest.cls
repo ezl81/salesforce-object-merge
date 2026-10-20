@@ -58,6 +58,36 @@ private class RecordMergeControllerTest {
     }
 
     @IsTest
+    static void unmerge_ListsPreviewsAndRestores() {
+        Map<String, Id> ids = getAccountIds();
+        Id survivorId = ids.get('Controller Survivor Co');
+        Id abandonedId = ids.get('Controller Abandoned Co');
+        RecordMergeController.mergeRecords(JSON.serialize(new Map<String, Object>{
+            'survivorId' => survivorId,
+            'abandonedId' => abandonedId,
+            'selections' => new Map<String, String>{ 'Phone' => abandonedId }
+        }));
+
+        Test.startTest();
+        List<Object> options = (List<Object>) JSON.deserializeUntyped(RecordMergeController.getUnmergeOptions(survivorId));
+        String logId = (String) ((Map<String, Object>) options[0]).get('logId');
+        Map<String, Object> preview = (Map<String, Object>) JSON.deserializeUntyped(RecordMergeController.getUnmergePreview(logId));
+        Map<String, Object> result = (Map<String, Object>) JSON.deserializeUntyped(RecordMergeController.unmergeRecords(JSON.serialize(new Map<String, Object>{
+            'logId' => logId,
+            'restoredFromSurvivor' => new List<String>(),
+            'survivorFieldsToRevert' => new List<String>{ 'Phone' },
+            'relatedRecordIds' => new List<String>()
+        })));
+        Test.stopTest();
+
+        Assert.areEqual(1, options.size());
+        Assert.areEqual('Controller Abandoned Co', preview.get('abandonedName'));
+        Assert.areEqual(String.valueOf(abandonedId), result.get('restoredId'));
+        Assert.areEqual('111-111-1111', [SELECT Phone FROM Account WHERE Id = :survivorId].Phone);
+        Assert.areEqual('222-222-2222', [SELECT Phone FROM Account WHERE Id = :abandonedId].Phone);
+    }
+
+    @IsTest
     static void errors_AreReturnedAsAuraHandledExceptions() {
         Id survivorId = getAccountIds().get('Controller Survivor Co');
 
@@ -70,6 +100,20 @@ private class RecordMergeControllerTest {
 
         try {
             RecordMergeController.mergeRecords('not json');
+            Assert.fail('Expected an AuraHandledException');
+        } catch (AuraHandledException e) {
+            Assert.isNotNull(e.getMessage());
+        }
+
+        try {
+            RecordMergeController.getUnmergePreview(survivorId);
+            Assert.fail('Expected an AuraHandledException');
+        } catch (AuraHandledException e) {
+            Assert.isTrue(e.getMessage().contains('Record Merge Log Id'));
+        }
+
+        try {
+            RecordMergeController.unmergeRecords('not json');
             Assert.fail('Expected an AuraHandledException');
         } catch (AuraHandledException e) {
             Assert.isNotNull(e.getMessage());

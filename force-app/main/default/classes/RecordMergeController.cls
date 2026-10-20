@@ -40,6 +40,53 @@ public with sharing class RecordMergeController {
         }
     }
 
+    /**
+     * getUnmergeOptions()
+     * @return Serialized List<RecordUnmergeService.UnmergeOption>: merges into this record that can be unmerged
+     */
+    @AuraEnabled
+    public static String getUnmergeOptions(Id recordId) {
+        try {
+            System.debug('***STARTING RecordMergeController.getUnmergeOptions***');
+            return JSON.serialize(RecordUnmergeService.getUnmergeOptions(recordId));
+        } catch (Exception e) {
+            throw buildAuraException(e);
+        }
+    }
+
+    /**
+     * getUnmergePreview()
+     * @return Serialized RecordUnmergeService.UnmergePreview for the merge recorded by logId
+     */
+    @AuraEnabled
+    public static String getUnmergePreview(Id logId) {
+        try {
+            System.debug('***STARTING RecordMergeController.getUnmergePreview***');
+            return JSON.serialize(RecordUnmergeService.getUnmergePreview(logId));
+        } catch (Exception e) {
+            throw buildAuraException(e);
+        }
+    }
+
+    /**
+     * unmergeRecords()
+     * @param request Serialized RecordUnmergeService.UnmergeRequest:
+     *   { "logId": "...", "restoredFromSurvivor": ["Website"], "survivorFieldsToRevert": ["Phone"], "relatedRecordIds": ["003..."] }
+     * @return Serialized RecordUnmergeService.UnmergeResult
+     */
+    @AuraEnabled
+    public static String unmergeRecords(String request) {
+        try {
+            System.debug('***STARTING RecordMergeController.unmergeRecords***');
+            System.debug('Request = ' + request);
+            RecordUnmergeService.UnmergeRequest unmergeRequest =
+                (RecordUnmergeService.UnmergeRequest) JSON.deserialize(request, RecordUnmergeService.UnmergeRequest.class);
+            return JSON.serialize(RecordUnmergeService.unmergeRecords(unmergeRequest));
+        } catch (Exception e) {
+            throw buildAuraException(e);
+        }
+    }
+
     private static AuraHandledException buildAuraException(Exception e) {
         System.debug('***EXCEPTION***');
         System.debug(e.getMessage());

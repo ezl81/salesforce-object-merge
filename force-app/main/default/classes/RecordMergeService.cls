@@ -8,7 +8,9 @@
  *  1. Copies the chosen field values from the abandoned record to the survivor.
  *  2. Re-parents every child record of the abandoned record to the survivor.
  *  3. Writes a Record_Merge_Log__c with a JSON snapshot of the abandoned record.
- *  4. Deletes the abandoned record (it goes to the recycle bin).
+ *  4. Saves an unmerge file (JSON) on the abandoned record and the log, so the
+ *     merge can be reversed later (see RecordUnmergeService).
+ *  5. Deletes the abandoned record (it goes to the recycle bin).
  * Everything runs under one savepoint, so any failure rolls the whole merge back.
  *
  * Security: the survivor update and the abandoned delete run in USER_MODE, so the
@@ -137,6 +139,8 @@ public with sharing class RecordMergeService {
             //System mode so the history is always written, whatever the user's access to the log object
             Database.insert(log, AccessLevel.SYSTEM_MODE);
 
+            Id unmergeFileId = RecordUnmergeService.saveUnmergeFile(objectDescribe, log, survivor, abandoned, fieldChanges, reparentedIds);
+
             if (Test.isRunningTest() && simulateFailureBeforeDelete) {
                 throw new RecordMergeException('Simulated failure before delete');
             }
@@ -145,6 +149,7 @@ public with sharing class RecordMergeService {
 
             MergeResult result = new MergeResult();
             result.logId = log.Id;
+            result.unmergeFileId = unmergeFileId;
             result.survivorId = request.survivorId;
             result.abandonedId = request.abandonedId;
             result.reparentedCount = 0;
@@ -163,7 +168,8 @@ public with sharing class RecordMergeService {
     /**
      * copySelectedFields()
      * Update the survivor with every value the user chose from the abandoned record.
-     * Returns fieldApiName -> { label, previousValue, newValue } for the log.
+     * Returns fieldApiName -> { label, previousValue, newValue, previousDisplay, newDisplay }
+     * for the log and the unmerge file.
      */
     private static Map<String, Object> copySelectedFields(Schema.DescribeSObjectResult objectDescribe,
             Map<String, Schema.DescribeFieldResult> comparableFields, MergeRequest request, SObject survivor, SObject abandoned) {
@@ -212,7 +218,9 @@ public with sharing class RecordMergeService {
             fieldChanges.put(apiName, new Map<String, Object>{
                 'label' => fieldDescribe.getLabel(),
                 'previousValue' => previousValue,
-                'newValue' => newValue
+                'newValue' => newValue,
+                'previousDisplay' => getDisplayValue(fieldDescribe, survivor),
+                'newDisplay' => getDisplayValue(fieldDescribe, abandoned)
             });
         }
 
@@ -227,15 +235,14 @@ public with sharing class RecordMergeService {
 
     //End - merge
 
-    //Start - describe helpers
+    //Start - describe helpers (also used by RecordUnmergeService)
 
     /**
      * getComparableFields()
      * Fields the user can read and edit, sorted by label. Compound Address and
      * Geolocation fields are skipped - their component fields are compared instead.
      */
-    @TestVisible
-    private static List<Schema.DescribeFieldResult> getComparableFields(Schema.DescribeSObjectResult objectDescribe) {
+    public static List<Schema.DescribeFieldResult> getComparableFields(Schema.DescribeSObjectResult objectDescribe) {
         Map<String, Schema.DescribeFieldResult> fieldsBySortKey = new Map<String, Schema.DescribeFieldResult>();
         for (Schema.SObjectField field : objectDescribe.fields.getMap().values()) {
             Schema.DescribeFieldResult fieldDescribe = field.getDescribe();
@@ -253,7 +260,7 @@ public with sharing class RecordMergeService {
         return fields;
     }
 
-    private static Boolean isExcludedType(Schema.DisplayType fieldType) {
+    public static Boolean isExcludedType(Schema.DisplayType fieldType) {
         return fieldType == Schema.DisplayType.ADDRESS ||
             fieldType == Schema.DisplayType.LOCATION ||
             fieldType == Schema.DisplayType.BASE64;
@@ -327,14 +334,14 @@ public with sharing class RecordMergeService {
 
     //End - describe helpers
 
-    //Start - record helpers
+    //Start - record helpers (also used by RecordUnmergeService)
 
     /**
      * queryRecords()
-     * Query both records with every accessible field (for the log snapshot) plus
-     * the lookup names used for display. Throws if either record isn't visible.
+     * Query the records with every accessible field (for the log snapshot) plus
+     * the lookup names used for display. Throws if any record isn't visible.
      */
-    private static Map<Id, SObject> queryRecords(Schema.DescribeSObjectResult objectDescribe, Set<Id> recordIds) {
+    public static Map<Id, SObject> queryRecords(Schema.DescribeSObjectResult objectDescribe, Set<Id> recordIds) {
         Set<String> selectFields = new Set<String>{ 'Id' };
         for (Schema.SObjectField field : objectDescribe.fields.getMap().values()) {
             Schema.DescribeFieldResult fieldDescribe = field.getDescribe();
@@ -359,12 +366,14 @@ public with sharing class RecordMergeService {
         Map<Id, SObject> records = new Map<Id, SObject>(Database.queryWithBinds(
             query, new Map<String, Object>{ 'recordIds' => recordIds }, AccessLevel.USER_MODE));
         if (records.size() != recordIds.size()) {
-            throw new RecordMergeException('One or both records could not be found, or you do not have access to them.');
+            throw new RecordMergeException(recordIds.size() == 1
+                ? 'The record could not be found, or you do not have access to it.'
+                : 'One or both records could not be found, or you do not have access to them.');
         }
         return records;
     }
 
-    private static String getRecordName(Schema.DescribeSObjectResult objectDescribe, SObject record) {
+    public static String getRecordName(Schema.DescribeSObjectResult objectDescribe, SObject record) {
         for (Schema.SObjectField field : objectDescribe.fields.getMap().values()) {
             Schema.DescribeFieldResult fieldDescribe = field.getDescribe();
             if (fieldDescribe.isNameField() && fieldDescribe.isAccessible()) {
@@ -377,7 +386,7 @@ public with sharing class RecordMergeService {
         return String.valueOf(record.Id);
     }
 
-    private static String getDisplayValue(Schema.DescribeFieldResult fieldDescribe, SObject record) {
+    public static String getDisplayValue(Schema.DescribeFieldResult fieldDescribe, SObject record) {
         Object value = record.get(fieldDescribe.getName());
         if (value == null) {
             return '';
@@ -408,8 +417,7 @@ public with sharing class RecordMergeService {
     }
 
     //String == is case-insensitive in Apex, so compare with equals() to catch case-only differences
-    @TestVisible
-    private static Boolean valuesEqual(Object valueA, Object valueB) {
+    public static Boolean valuesEqual(Object valueA, Object valueB) {
         if (valueA == null || valueB == null) {
             return valueA == null && valueB == null;
         }
@@ -671,6 +679,8 @@ public with sharing class RecordMergeService {
 
     public class MergeResult {
         public Id logId;
+        //ContentDocument Id of the unmerge file
+        public Id unmergeFileId;
         public Id survivorId;
         public Id abandonedId;
         public Integer reparentedCount;

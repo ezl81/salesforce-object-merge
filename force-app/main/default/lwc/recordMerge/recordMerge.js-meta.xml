@@ -3,7 +3,7 @@
     <apiVersion>67.0</apiVersion>
     <isExposed>true</isExposed>
     <masterLabel>Record Merge</masterLabel>
-    <description>Merge another record of the same type into this one: pick the master, choose field values, re-parent related records and log the abandoned record.</description>
+    <description>Merge another record of the same type into this one: pick the master, choose field values, re-parent related records and log the abandoned record. Merges into this record can be unmerged.</description>
     <targets>
         <target>lightning__RecordPage</target>
     </targets>

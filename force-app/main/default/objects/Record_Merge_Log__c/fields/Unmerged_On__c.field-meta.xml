@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Unmerged_On__c</fullName>
+    <description>When the merge was reversed with the recordMerge LWC. Blank while the merge can still be unmerged.</description>
+    <externalId>false</externalId>
+    <label>Unmerged On</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>DateTime</type>
+</CustomField>

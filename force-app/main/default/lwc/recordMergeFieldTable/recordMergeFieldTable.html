@@ -1,0 +1,62 @@
+<template>
+    <div class="slds-scrollable_x">
+        <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_fixed-layout" aria-label={tableLabel}>
+            <thead>
+                <tr class="slds-line-height_reset">
+                    <th scope="col" class="merge-field-column">
+                        <div class="slds-truncate">Field</div>
+                    </th>
+                    <th scope="col">
+                        <div class="slds-truncate" title={leftHeader}>{leftHeader}</div>
+                    </th>
+                    <th scope="col">
+                        <div class="slds-truncate" title={rightHeader}>{rightHeader}</div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <template for:each={rows} for:item="row">
+                    <tr key={row.key} class={row.rowClass}>
+                        <th scope="row">
+                            <div class="slds-truncate" title={row.label}>{row.label}</div>
+                        </th>
+                        <td>
+                            <span class="slds-radio">
+                                <input
+                                    type="radio"
+                                    id={row.left.inputId}
+                                    name={row.radioName}
+                                    value={row.left.side}
+                                    data-field={row.key}
+                                    data-side={row.left.side}
+                                    checked={row.left.checked}
+                                    onchange={handleValueSelect} />
+                                <label class="slds-radio__label" for={row.left.inputId}>
+                                    <span class="slds-radio_faux"></span>
+                                    <span class={row.left.displayClass}>{row.left.display}</span>
+                                </label>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="slds-radio">
+                                <input
+                                    type="radio"
+                                    id={row.right.inputId}
+                                    name={row.radioName}
+                                    value={row.right.side}
+                                    data-field={row.key}
+                                    data-side={row.right.side}
+                                    checked={row.right.checked}
+                                    onchange={handleValueSelect} />
+                                <label class="slds-radio__label" for={row.right.inputId}>
+                                    <span class="slds-radio_faux"></span>
+                                    <span class={row.right.displayClass}>{row.right.display}</span>
+                                </label>
+                            </span>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+</template>

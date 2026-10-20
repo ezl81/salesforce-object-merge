@@ -5,6 +5,8 @@
         <members>RecordMergeControllerTest</members>
         <members>RecordMergeService</members>
         <members>RecordMergeServiceTest</members>
+        <members>RecordUnmergeService</members>
+        <members>RecordUnmergeServiceTest</members>
         <name>ApexClass</name>
     </types>
     <types>
@@ -14,7 +16,9 @@
         <members>Record_Merge_Log__c.Field_Selections_JSON__c</members>
         <members>Record_Merge_Log__c.Object_Api_Name__c</members>
         <members>Record_Merge_Log__c.Reparented_Records_JSON__c</members>
+        <members>Record_Merge_Log__c.Restored_Record_Id__c</members>
         <members>Record_Merge_Log__c.Surviving_Record_Id__c</members>
+        <members>Record_Merge_Log__c.Unmerged_On__c</members>
         <name>CustomField</name>
     </types>
     <types>
@@ -35,6 +39,7 @@
 	</types>
     <types>
         <members>recordMerge</members>
+        <members>recordMergeFieldTable</members>
         <name>LightningComponentBundle</name>
     </types>
     <types>
