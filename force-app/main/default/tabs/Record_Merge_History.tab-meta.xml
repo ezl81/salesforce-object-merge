@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Every merge done with Record Merge, with an Unmerge action that restores the deleted record without going to the recycle bin.</description>
+    <label>Merge History</label>
+    <lwcComponent>recordMergeHistory</lwcComponent>
+    <motif>Custom18: Form</motif>
+</CustomTab>

@@ -1,0 +1,144 @@
+<template>
+    <template lwc:if={isLoading}>
+        <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+    </template>
+
+    <template lwc:if={errorMessage}>
+        <div class="slds-notify slds-notify_alert slds-alert_error slds-var-m-bottom_small" role="alert">
+            <h2>{errorMessage}</h2>
+        </div>
+    </template>
+
+    <template lwc:if={preview}>
+        <h3 class="slds-text-heading_small">{title}</h3>
+        <div class={restoreModeClass} role="status">
+            <p>{restoreModeMessage}</p>
+        </div>
+
+        <div class="slds-var-m-top_medium">
+            <lightning-input
+                type="toggle"
+                label={differenceCountLabel}
+                checked={showOnlyDifferences}
+                message-toggle-active=""
+                message-toggle-inactive=""
+                onchange={handleShowOnlyDifferences}>
+            </lightning-input>
+        </div>
+
+        <!-- Values for the restored record -->
+        <div class="slds-grid slds-wrap slds-grid_vertical-align-center slds-var-m-top_medium">
+            <div class="slds-col slds-grow">
+                <h3 class="slds-text-heading_small">Values for {restoredName}</h3>
+                <p class="slds-text-body_small slds-text-color_weak">Choose the value each field (lookups included) gets on the restored record.</p>
+            </div>
+            <div class="slds-col slds-grow-none">
+                <lightning-button-group>
+                    <lightning-button label="Use all from merge" onclick={handleRestoreUseAllSnapshot}></lightning-button>
+                    <lightning-button label="Use all current" onclick={handleRestoreUseAllSurvivor}></lightning-button>
+                </lightning-button-group>
+            </div>
+        </div>
+        <template lwc:if={hasRestoreRows}>
+            <c-record-merge-field-table
+                class="slds-show slds-var-m-top_small"
+                rows={restoreRows}
+                left-header={restoreSnapshotHeader}
+                right-header={restoreSurvivorHeader}
+                table-label="Values for the restored record"
+                onvalueselect={handleRestoreValueSelect}>
+            </c-record-merge-field-table>
+        </template>
+        <template lwc:else>
+            <p class="slds-var-m-top_small slds-text-color_weak">{restoredName} had the same value as {survivorName} in every field you can edit.</p>
+        </template>
+
+        <!-- Values the merge changed on the survivor -->
+        <template lwc:if={hasSurvivorFields}>
+            <div class="slds-grid slds-wrap slds-grid_vertical-align-center slds-var-m-top_large">
+                <div class="slds-col slds-grow">
+                    <h3 class="slds-text-heading_small">Values the merge changed on {survivorName}</h3>
+                    <p class="slds-text-body_small slds-text-color_weak">Choose whether to put back the value {survivorName} had before the merge.</p>
+                </div>
+                <div class="slds-col slds-grow-none">
+                    <lightning-button-group>
+                        <lightning-button label="Revert all" onclick={handleSurvivorRevertAll}></lightning-button>
+                        <lightning-button label="Keep all current" onclick={handleSurvivorKeepAll}></lightning-button>
+                    </lightning-button-group>
+                </div>
+            </div>
+            <template lwc:if={hasChangedSinceMerge}>
+                <p class="slds-text-body_small slds-text-color_error slds-var-m-top_x-small">
+                    Some of these fields were edited after the merge, so their current value is kept by default.
+                </p>
+            </template>
+            <template lwc:if={hasSurvivorRows}>
+                <c-record-merge-field-table
+                    class="slds-show slds-var-m-top_small"
+                    rows={survivorRows}
+                    left-header="Keep current value"
+                    right-header="Value before the merge"
+                    table-label="Values the merge changed"
+                    onvalueselect={handleSurvivorValueSelect}>
+                </c-record-merge-field-table>
+            </template>
+            <template lwc:else>
+                <p class="slds-var-m-top_small slds-text-color_weak">Every field the merge changed already has its value from before the merge.</p>
+            </template>
+        </template>
+
+        <!-- Related records to move back -->
+        <div class="slds-box slds-theme_shade slds-var-m-top_medium">
+            <div class="slds-grid slds-wrap slds-grid_vertical-align-center slds-var-m-bottom_x-small">
+                <div class="slds-col slds-grow">
+                    <h3 class="slds-text-heading_small">Related records to move back</h3>
+                </div>
+                <template lwc:if={hasRelatedGroups}>
+                    <div class="slds-col slds-grow-none">
+                        <lightning-button-group>
+                            <lightning-button label="Select all" onclick={handleRelatedSelectAll}></lightning-button>
+                            <lightning-button label="Select none" onclick={handleRelatedSelectNone}></lightning-button>
+                        </lightning-button-group>
+                    </div>
+                </template>
+            </div>
+            <template lwc:if={hasRelatedGroups}>
+                <p class="slds-text-body_small slds-text-color_weak slds-var-m-bottom_x-small">
+                    Records the merge moved to {survivorName}. Unselected records stay on {survivorName}.
+                </p>
+                <template for:each={relatedGroups} for:item="relatedGroup">
+                    <lightning-checkbox-group
+                        key={relatedGroup.key}
+                        class="slds-show slds-var-m-top_x-small"
+                        name={relatedGroup.key}
+                        label={relatedGroup.label}
+                        options={relatedGroup.options}
+                        value={relatedGroup.value}
+                        data-key={relatedGroup.key}
+                        onchange={handleRelatedChange}>
+                    </lightning-checkbox-group>
+                </template>
+            </template>
+            <template lwc:else>
+                <p>None of the records the merge moved are still on {survivorName}.</p>
+            </template>
+        </div>
+    </template>
+
+    <div class="slds-var-m-top_medium slds-text-align_right">
+        <lightning-button
+            class="slds-var-m-right_x-small"
+            label="Cancel"
+            disabled={isLoading}
+            onclick={handleCancel}>
+        </lightning-button>
+        <template lwc:if={preview}>
+            <lightning-button
+                variant="destructive"
+                label="Unmerge Records"
+                disabled={isLoading}
+                onclick={handleUnmerge}>
+            </lightning-button>
+        </template>
+    </div>
+</template>

@@ -62,6 +62,10 @@
         <viewAllRecords>false</viewAllRecords>
     </objectPermissions>
     <tabSettings>
+        <tab>Record_Merge_History</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+    <tabSettings>
         <tab>Record_Merge_Log__c</tab>
         <visibility>Visible</visibility>
     </tabSettings>

@@ -264,6 +264,79 @@ private class RecordUnmergeServiceTest {
         assertUnmergeFails(buildRequest(mergeResult.logId, null, null, null), 'no longer exists');
     }
 
+    private static RecordUnmergeService.HistoryResult getHistory(String objectApiName, String status, String searchText) {
+        RecordUnmergeService.HistoryRequest request = new RecordUnmergeService.HistoryRequest();
+        request.objectApiName = objectApiName;
+        request.status = status;
+        request.searchText = searchText;
+        return RecordUnmergeService.getMergeHistory(request);
+    }
+
+    @IsTest
+    static void getMergeHistory_ListsAndFiltersMerges() {
+        RecordMergeService.MergeResult mergeResult = mergeAccounts();
+
+        Test.startTest();
+        RecordUnmergeService.HistoryResult allHistory = RecordUnmergeService.getMergeHistory(null);
+        RecordUnmergeService.HistoryResult byName = getHistory('Account', RecordUnmergeService.STATUS_AVAILABLE, 'Abandoned Vent');
+        RecordUnmergeService.HistoryResult bySurvivorId = getHistory(null, null, String.valueOf(mergeResult.survivorId));
+        RecordUnmergeService.HistoryResult otherObject = getHistory('Contact', null, null);
+        RecordUnmergeService.HistoryResult noMatch = getHistory(null, null, 'No Such Record');
+        Test.stopTest();
+
+        Assert.areEqual(1, allHistory.rows.size());
+        Assert.isFalse(allHistory.hasMore);
+        RecordUnmergeService.HistoryRow row = allHistory.rows[0];
+        Assert.areEqual(mergeResult.logId, row.logId);
+        Assert.areEqual('Account', row.objectLabel);
+        Assert.areEqual(ABANDONED_NAME, row.abandonedName);
+        Assert.areEqual(SURVIVOR_NAME, row.survivorName);
+        Assert.isTrue(row.canUnmerge);
+        Assert.areEqual('Can unmerge', row.status);
+        Assert.areEqual(1, allHistory.objectOptions.size());
+        Assert.areEqual('Account', allHistory.objectOptions[0].value);
+
+        Assert.areEqual(1, byName.rows.size());
+        Assert.areEqual(1, bySurvivorId.rows.size());
+        Assert.isTrue(otherObject.rows.isEmpty());
+        Assert.isTrue(noMatch.rows.isEmpty());
+    }
+
+    @IsTest
+    static void getMergeHistory_ShowsUnmergedAndMissingFileMerges() {
+        RecordMergeService.MergeResult mergeResult = mergeAccounts();
+        RecordUnmergeService.unmergeRecords(buildRequest(mergeResult.logId, null, null, null));
+
+        Test.startTest();
+        RecordUnmergeService.HistoryResult unmerged = getHistory(null, RecordUnmergeService.STATUS_UNMERGED, null);
+        RecordUnmergeService.HistoryResult available = getHistory(null, RecordUnmergeService.STATUS_AVAILABLE, null);
+        delete new ContentDocument(Id = mergeResult.unmergeFileId);
+        RecordUnmergeService.HistoryResult afterFileDelete = getHistory(null, RecordUnmergeService.STATUS_ALL, null);
+        Test.stopTest();
+
+        Assert.areEqual(1, unmerged.rows.size());
+        RecordUnmergeService.HistoryRow row = unmerged.rows[0];
+        Assert.isFalse(row.canUnmerge);
+        Assert.areEqual('Unmerged', row.status);
+        Assert.isNotNull(row.unmergedOn);
+        Assert.areEqual(String.valueOf(mergeResult.abandonedId), row.restoredId);
+        Assert.areEqual(ABANDONED_NAME, row.restoredName);
+        Assert.isTrue(available.rows.isEmpty());
+        Assert.isNull(afterFileDelete.rows[0].unmergeFileId);
+    }
+
+    @IsTest
+    static void getMergeHistory_RejectsOffsetPastTheLimit() {
+        RecordUnmergeService.HistoryRequest request = new RecordUnmergeService.HistoryRequest();
+        request.offsetSize = 2001;
+        try {
+            RecordUnmergeService.getMergeHistory(request);
+            Assert.fail('Expected the offset to be rejected');
+        } catch (RecordMergeService.RecordMergeException e) {
+            Assert.isTrue(e.getMessage().contains('Narrow the filters'));
+        }
+    }
+
     private static void assertUnmergeFails(RecordUnmergeService.UnmergeRequest request, String expectedMessage) {
         try {
             RecordUnmergeService.unmergeRecords(request);

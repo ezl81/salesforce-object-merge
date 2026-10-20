@@ -88,6 +88,29 @@ private class RecordMergeControllerTest {
     }
 
     @IsTest
+    static void getMergeHistory_ReturnsSerializedPage() {
+        Map<String, Id> ids = getAccountIds();
+        Id abandonedId = ids.get('Controller Abandoned Co');
+        RecordMergeController.mergeRecords(JSON.serialize(new Map<String, Object>{
+            'survivorId' => ids.get('Controller Survivor Co'),
+            'abandonedId' => abandonedId,
+            'selections' => new Map<String, String>()
+        }));
+
+        Test.startTest();
+        Map<String, Object> allHistory = (Map<String, Object>) JSON.deserializeUntyped(RecordMergeController.getMergeHistory(null));
+        Map<String, Object> filtered = (Map<String, Object>) JSON.deserializeUntyped(RecordMergeController.getMergeHistory(
+            JSON.serialize(new Map<String, Object>{ 'status' => 'unmerged' })));
+        Test.stopTest();
+
+        List<Object> rows = (List<Object>) allHistory.get('rows');
+        Assert.areEqual(1, rows.size());
+        Assert.areEqual('Controller Abandoned Co', ((Map<String, Object>) rows[0]).get('abandonedName'));
+        Assert.areEqual(true, ((Map<String, Object>) rows[0]).get('canUnmerge'));
+        Assert.isTrue(((List<Object>) filtered.get('rows')).isEmpty());
+    }
+
+    @IsTest
     static void errors_AreReturnedAsAuraHandledExceptions() {
         Id survivorId = getAccountIds().get('Controller Survivor Co');
 

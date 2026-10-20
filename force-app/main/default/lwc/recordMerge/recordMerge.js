@@ -6,64 +6,12 @@ import LightningConfirm from 'lightning/confirm';
 import getComparison from '@salesforce/apex/RecordMergeController.getComparison';
 import mergeRecords from '@salesforce/apex/RecordMergeController.mergeRecords';
 import getUnmergeOptions from '@salesforce/apex/RecordMergeController.getUnmergeOptions';
-import getUnmergePreview from '@salesforce/apex/RecordMergeController.getUnmergePreview';
-import unmergeRecords from '@salesforce/apex/RecordMergeController.unmergeRecords';
+import { buildFieldRows, allSelections, isBlank, reduceError } from 'c/recordMergeUtils';
 
 //The master picker values. Side 'A' is always the record page's record,
 //side 'B' the record chosen in the picker.
 const CURRENT = 'current';
 const OTHER = 'other';
-
-//Unmerge comparisons (see RecordUnmergeService.UnmergePreview):
-//restored fields - A = the deleted record's value at the merge, B = this record's current value
-//survivor fields - A = this record's current value, B = its value before the merge
-const SNAPSHOT = 'A';
-const SURVIVOR_CURRENT = 'B';
-const KEEP_CURRENT = 'A';
-const BEFORE_MERGE = 'B';
-
-const RESTORE_MODE_MESSAGES = {
-    UNDELETE: (name) => `"${name}" will be restored from the recycle bin and keep its original Id.`,
-    RECREATE: (name) =>
-        `"${name}" is no longer in the recycle bin, so it will be recreated as a new record with a new Id. ` +
-        'Its field history and anything that pointed to the old Id cannot be restored.',
-    EXISTS: (name) => `"${name}" has already been restored. The values and related records you choose will be applied to it.`
-};
-
-function isBlank(value) {
-    return value === null || value === undefined || value === '';
-}
-
-/**
- * Rows for c-record-merge-field-table: one radio for the left side and one for
- * the right side of each field. Sides are 'A' or 'B' (valueA/displayA or valueB/displayB).
- */
-function buildFieldRows(fields, selections, leftSide, rightSide, groupName, onlyDifferences) {
-    return fields
-        .filter((field) => !onlyDifferences || field.isDifferent)
-        .map((field) => {
-            const selected = selections[field.apiName];
-            return {
-                key: field.apiName,
-                label: field.label,
-                radioName: `${groupName}-${field.apiName}`,
-                rowClass: field.isDifferent ? 'slds-hint-parent merge-row_different' : 'slds-hint-parent',
-                left: buildFieldCell(field, leftSide, selected, `${groupName}-${field.apiName}-left`),
-                right: buildFieldCell(field, rightSide, selected, `${groupName}-${field.apiName}-right`)
-            };
-        });
-}
-
-function buildFieldCell(field, side, selected, inputId) {
-    const display = side === 'A' ? field.displayA : field.displayB;
-    return {
-        inputId,
-        side,
-        checked: selected === side,
-        display: display || '(blank)',
-        displayClass: display ? 'merge-value' : 'merge-value merge-value_blank'
-    };
-}
 
 export default class RecordMerge extends NavigationMixin(LightningElement) {
     @api recordId;
@@ -85,17 +33,8 @@ export default class RecordMerge extends NavigationMixin(LightningElement) {
     //RecordUnmergeService.UnmergeOption[] - merges into this record that can be unmerged
     unmergeOptions = [];
 
-    //RecordUnmergeService.UnmergePreview while unmerging, otherwise null
-    unmergePreview = null;
-
-    //Field apiName -> SNAPSHOT | SURVIVOR_CURRENT
-    restoreSelections = {};
-
-    //Field apiName -> KEEP_CURRENT | BEFORE_MERGE
-    survivorSelections = {};
-
-    //Related group key -> Ids to move back
-    relatedSelections = {};
+    //Record_Merge_Log__c Id shown in c-record-unmerge, otherwise null
+    unmergeLogId = null;
 
     showOnlyDifferences = true;
     isLoading = false;
@@ -110,11 +49,11 @@ export default class RecordMerge extends NavigationMixin(LightningElement) {
     }
 
     get isUnmergeMode() {
-        return !!this.unmergePreview;
+        return !!this.unmergeLogId;
     }
 
     get isMergeMode() {
-        return !this.unmergePreview;
+        return !this.unmergeLogId;
     }
 
     //Start - record picker
@@ -249,23 +188,11 @@ export default class RecordMerge extends NavigationMixin(LightningElement) {
     }
 
     handleUseAllMaster() {
-        this.setAllSelections(this.masterSide);
+        this.selections = allSelections(this.comparison.fields, this.masterSide);
     }
 
     handleUseAllOther() {
-        this.setAllSelections(this.otherSide);
-    }
-
-    setAllSelections(side) {
-        this.selections = this.allSelections(this.comparison.fields, side);
-    }
-
-    allSelections(fields, side) {
-        const selections = {};
-        fields.forEach((field) => {
-            selections[field.apiName] = side;
-        });
-        return selections;
+        this.selections = allSelections(this.comparison.fields, this.otherSide);
     }
 
     //End - field comparison
@@ -368,7 +295,7 @@ export default class RecordMerge extends NavigationMixin(LightningElement) {
 
     //End - merge
 
-    //Start - unmerge options
+    //Start - unmerge
 
     async loadUnmergeOptions() {
         if (!this.recordId) {
@@ -393,284 +320,30 @@ export default class RecordMerge extends NavigationMixin(LightningElement) {
             name: option.abandonedName || option.abandonedId,
             mergedOn: option.mergedOn,
             mergedByName: option.mergedByName,
-            buttonLabel: 'Unmerge',
             buttonTitle: `Unmerge ${option.abandonedName || option.abandonedId}`
         }));
     }
 
-    async handleUnmergeStart(event) {
-        const { logId } = event.currentTarget.dataset;
-        this.isLoading = true;
+    handleUnmergeStart(event) {
         this.errorMessage = null;
-        try {
-            const preview = JSON.parse(await getUnmergePreview({ logId }));
-            this.applyUnmergeDefaults(preview);
-            this.unmergePreview = preview;
-            this.resetState();
-        } catch (error) {
-            this.handleError(error);
-        } finally {
-            this.isLoading = false;
-        }
-    }
-
-    //Restored record: its own values from the merge. This record: put back what the merge
-    //changed, unless the field was edited again after the merge. Related: move everything back.
-    applyUnmergeDefaults(preview) {
-        this.restoreSelections = this.allSelections(preview.restoredFields, SNAPSHOT);
-
-        const changedSinceMerge = new Set(preview.survivorFieldsChangedSinceMerge);
-        const survivorSelections = {};
-        preview.survivorFields.forEach((field) => {
-            survivorSelections[field.apiName] = changedSinceMerge.has(field.apiName) ? KEEP_CURRENT : BEFORE_MERGE;
-        });
-        this.survivorSelections = survivorSelections;
-
-        this.relatedSelections = this.allRelatedSelections(preview, true);
+        this.resetState();
+        this.unmergeLogId = event.currentTarget.dataset.logId;
     }
 
     handleUnmergeCancel() {
-        this.unmergePreview = null;
-        this.restoreSelections = {};
-        this.survivorSelections = {};
-        this.relatedSelections = {};
-        this.errorMessage = null;
+        this.unmergeLogId = null;
     }
 
-    //End - unmerge options
-
-    //Start - unmerge values
-
-    get restoredName() {
-        return this.unmergePreview?.abandonedName ?? '';
-    }
-
-    get survivorName() {
-        return this.unmergePreview?.survivorName ?? '';
-    }
-
-    get unmergeTitle() {
-        return `Unmerge "${this.restoredName}" from "${this.survivorName}"`;
-    }
-
-    get restoreModeMessage() {
-        const message = RESTORE_MODE_MESSAGES[this.unmergePreview?.restoreMode];
-        return message ? message(this.restoredName) : '';
-    }
-
-    get isRecreate() {
-        return this.unmergePreview?.restoreMode === 'RECREATE';
-    }
-
-    get restoreModeClass() {
-        return this.isRecreate
-            ? 'slds-notify slds-notify_alert slds-alert_warning slds-var-m-top_small'
-            : 'slds-box slds-box_x-small slds-theme_info slds-var-m-top_small';
-    }
-
-    get unmergeDifferenceCountLabel() {
-        if (!this.unmergePreview) {
-            return '';
-        }
-        const count = [...this.unmergePreview.restoredFields, ...this.unmergePreview.survivorFields]
-            .filter((field) => field.isDifferent).length;
-        return `Show only differences (${count})`;
-    }
-
-    get restoreRows() {
-        if (!this.unmergePreview) {
-            return [];
-        }
-        return buildFieldRows(this.unmergePreview.restoredFields, this.restoreSelections, SNAPSHOT, SURVIVOR_CURRENT,
-            'restore', this.showOnlyDifferences);
-    }
-
-    get hasRestoreRows() {
-        return this.restoreRows.length > 0;
-    }
-
-    get restoreSnapshotHeader() {
-        return `${this.restoredName} when merged`;
-    }
-
-    get restoreSurvivorHeader() {
-        return `Current on ${this.survivorName}`;
-    }
-
-    get survivorRows() {
-        if (!this.unmergePreview) {
-            return [];
-        }
-        return buildFieldRows(this.unmergePreview.survivorFields, this.survivorSelections, KEEP_CURRENT, BEFORE_MERGE,
-            'survivor', this.showOnlyDifferences);
-    }
-
-    get hasSurvivorFields() {
-        return !!this.unmergePreview && this.unmergePreview.survivorFields.length > 0;
-    }
-
-    get hasSurvivorRows() {
-        return this.survivorRows.length > 0;
-    }
-
-    get survivorCurrentHeader() {
-        return 'Keep current value';
-    }
-
-    get survivorBeforeHeader() {
-        return 'Value before the merge';
-    }
-
-    get hasChangedSinceMerge() {
-        return !!this.unmergePreview && this.unmergePreview.survivorFieldsChangedSinceMerge.length > 0;
-    }
-
-    handleRestoreValueSelect(event) {
-        const { field, side } = event.detail;
-        this.restoreSelections = { ...this.restoreSelections, [field]: side };
-    }
-
-    handleRestoreUseAllSnapshot() {
-        this.restoreSelections = this.allSelections(this.unmergePreview.restoredFields, SNAPSHOT);
-    }
-
-    handleRestoreUseAllSurvivor() {
-        this.restoreSelections = this.allSelections(this.unmergePreview.restoredFields, SURVIVOR_CURRENT);
-    }
-
-    handleSurvivorValueSelect(event) {
-        const { field, side } = event.detail;
-        this.survivorSelections = { ...this.survivorSelections, [field]: side };
-    }
-
-    handleSurvivorRevertAll() {
-        this.survivorSelections = this.allSelections(this.unmergePreview.survivorFields, BEFORE_MERGE);
-    }
-
-    handleSurvivorKeepAll() {
-        this.survivorSelections = this.allSelections(this.unmergePreview.survivorFields, KEEP_CURRENT);
-    }
-
-    //End - unmerge values
-
-    //Start - unmerge related records
-
-    get relatedGroups() {
-        if (!this.unmergePreview) {
-            return [];
-        }
-        return this.unmergePreview.relatedGroups.map((relatedGroup) => {
-            const value = this.relatedSelections[relatedGroup.key] || [];
-            return {
-                key: relatedGroup.key,
-                label: `${relatedGroup.label}: ${value.length} of ${relatedGroup.records.length} selected`,
-                options: relatedGroup.records.map((record) => ({ label: record.name, value: record.id })),
-                value
-            };
-        });
-    }
-
-    get hasRelatedGroups() {
-        return this.relatedGroups.length > 0;
-    }
-
-    get selectedRelatedIds() {
-        return Object.values(this.relatedSelections).flat();
-    }
-
-    allRelatedSelections(preview, selectAll) {
-        const selections = {};
-        preview.relatedGroups.forEach((relatedGroup) => {
-            selections[relatedGroup.key] = selectAll ? relatedGroup.records.map((record) => record.id) : [];
-        });
-        return selections;
-    }
-
-    handleRelatedChange(event) {
-        const { key } = event.target.dataset;
-        this.relatedSelections = { ...this.relatedSelections, [key]: event.detail.value };
-    }
-
-    handleRelatedSelectAll() {
-        this.relatedSelections = this.allRelatedSelections(this.unmergePreview, true);
-    }
-
-    handleRelatedSelectNone() {
-        this.relatedSelections = this.allRelatedSelections(this.unmergePreview, false);
-    }
-
-    //End - unmerge related records
-
-    //Start - unmerge
-
-    async handleUnmerge() {
-        const relatedIds = this.selectedRelatedIds;
-        const restoreMessage = this.isRecreate ? `"${this.restoredName}" will be recreated with a new Id. ` : '';
-        const confirmed = await LightningConfirm.open({
-            label: 'Confirm Unmerge',
-            theme: 'warning',
-            message: `${restoreMessage}"${this.restoredName}" will be restored with the selected values, and ` +
-                `${relatedIds.length} related record(s) will be moved back to it from "${this.survivorName}". Continue?`
-        });
-        if (!confirmed) {
-            return;
-        }
-
-        const request = {
-            logId: this.unmergePreview.logId,
-            restoredFromSurvivor: Object.keys(this.restoreSelections)
-                .filter((apiName) => this.restoreSelections[apiName] === SURVIVOR_CURRENT),
-            survivorFieldsToRevert: Object.keys(this.survivorSelections)
-                .filter((apiName) => this.survivorSelections[apiName] === BEFORE_MERGE),
-            relatedRecordIds: relatedIds
-        };
-
-        this.isLoading = true;
-        this.errorMessage = null;
-        try {
-            const result = JSON.parse(await unmergeRecords({ request: JSON.stringify(request) }));
-            await this.showUnmergeToast(result);
-            await notifyRecordUpdateAvailable([{ recordId: this.recordId }]);
-            this.handleUnmergeCancel();
-            await this.loadUnmergeOptions();
-        } catch (error) {
-            this.handleError(error);
-        } finally {
-            this.isLoading = false;
-        }
-    }
-
-    async showUnmergeToast(result) {
-        const url = await this[NavigationMixin.GenerateUrl]({
-            type: 'standard__recordPage',
-            attributes: {
-                recordId: result.restoredId,
-                actionName: 'view'
-            }
-        });
-        this.dispatchEvent(
-            new ShowToastEvent({
-                title: 'Records unmerged',
-                message: '{0} was restored and ' + result.movedCount + ' related record(s) were moved back to it.',
-                messageData: [{ url, label: result.restoredName || 'The record' }],
-                variant: 'success'
-            })
-        );
+    async handleUnmerged() {
+        this.unmergeLogId = null;
+        await notifyRecordUpdateAvailable([{ recordId: this.recordId }]);
+        await this.loadUnmergeOptions();
     }
 
     //End - unmerge
 
     handleError(err) {
-        this.errorMessage = this.reduceError(err);
+        this.errorMessage = reduceError(err);
         console.log('Error = ' + JSON.stringify(err));
-    }
-
-    reduceError(error) {
-        if (Array.isArray(error?.body)) {
-            return error.body.map((e) => e.message).join(', ');
-        } else if (error?.body?.message) {
-            return error.body.message;
-        }
-        return error?.message ?? 'Unknown error';
     }
 }

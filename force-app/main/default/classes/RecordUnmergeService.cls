@@ -51,6 +51,15 @@ public with sharing class RecordUnmergeService {
     //Merges listed in the component
     private static final Integer MAX_OPTIONS = 50;
 
+    //Merge history page size, and the furthest SOQL OFFSET can go
+    public static final Integer HISTORY_PAGE_SIZE = 50;
+    private static final Integer MAX_OFFSET = 2000;
+
+    //Merge history status filters
+    public static final String STATUS_AVAILABLE = 'available';
+    public static final String STATUS_UNMERGED = 'unmerged';
+    public static final String STATUS_ALL = 'all';
+
     @TestVisible
     private static Boolean simulateFailureAfterRestore = false;
 
@@ -226,6 +235,194 @@ public with sharing class RecordUnmergeService {
     }
 
     //End - options and preview
+
+    //Start - merge history
+
+    /**
+     * getMergeHistory()
+     * One page of merges, newest first, for the merge history page. Logs are read
+     * with the user's sharing; whether each one can be unmerged is checked in system mode.
+     * @param request objectApiName, status (available | unmerged | all), searchText and offsetSize - all optional
+     */
+    public static HistoryResult getMergeHistory(HistoryRequest request) {
+        HistoryRequest filters = request == null ? new HistoryRequest() : request;
+        Integer offsetSize = filters.offsetSize == null || filters.offsetSize < 0 ? 0 : filters.offsetSize;
+        if (offsetSize > MAX_OFFSET) {
+            throw new RecordMergeService.RecordMergeException('Narrow the filters to see older merges.');
+        }
+
+        List<String> conditions = new List<String>();
+        Map<String, Object> binds = new Map<String, Object>{
+            'pageLimit' => HISTORY_PAGE_SIZE + 1,
+            'offsetSize' => offsetSize
+        };
+        if (String.isNotBlank(filters.objectApiName)) {
+            conditions.add('Object_Api_Name__c = :objectApiName');
+            binds.put('objectApiName', filters.objectApiName);
+        }
+        if (filters.status == STATUS_AVAILABLE) {
+            conditions.add('Unmerged_On__c = null');
+        } else if (filters.status == STATUS_UNMERGED) {
+            conditions.add('Unmerged_On__c != null');
+        }
+        if (String.isNotBlank(filters.searchText)) {
+            String searchText = filters.searchText.trim();
+            conditions.add('(Abandoned_Record_Name__c LIKE :searchPattern OR Name LIKE :searchPattern OR ' +
+                'Abandoned_Record_Id__c = :searchText OR Surviving_Record_Id__c = :searchText OR Restored_Record_Id__c = :searchText)');
+            binds.put('searchPattern', '%' + searchText + '%');
+            binds.put('searchText', searchText);
+        }
+
+        String query = 'SELECT Id, Name, Object_Api_Name__c, Surviving_Record_Id__c, Abandoned_Record_Id__c, Abandoned_Record_Name__c, ' +
+            'Unmerged_On__c, Restored_Record_Id__c, CreatedDate, CreatedBy.Name FROM Record_Merge_Log__c' +
+            (conditions.isEmpty() ? '' : ' WHERE ' + String.join(conditions, ' AND ')) +
+            ' ORDER BY CreatedDate DESC, Id DESC LIMIT :pageLimit OFFSET :offsetSize';
+        List<Record_Merge_Log__c> logs = Database.queryWithBinds(query, binds, AccessLevel.USER_MODE);
+
+        HistoryResult result = new HistoryResult();
+        result.hasMore = logs.size() > HISTORY_PAGE_SIZE;
+        if (result.hasMore) {
+            logs.remove(logs.size() - 1);
+        }
+        result.nextOffset = offsetSize + logs.size();
+        if (offsetSize == 0) {
+            result.objectOptions = getHistoryObjectOptions();
+        }
+        if (logs.isEmpty()) {
+            return result;
+        }
+
+        Map<Id, Id> documentIdsByLog = new SystemContext().findUnmergeDocumentIds(logs);
+        Set<Id> recordIds = new Set<Id>();
+        for (Record_Merge_Log__c log : logs) {
+            addId(recordIds, log.Surviving_Record_Id__c);
+            addId(recordIds, log.Restored_Record_Id__c);
+        }
+        Map<Id, String> recordNames = getRecordNames(recordIds);
+
+        for (Record_Merge_Log__c log : logs) {
+            result.rows.add(buildHistoryRow(log, documentIdsByLog.get(log.Id), recordNames));
+        }
+        return result;
+    }
+
+    private static HistoryRow buildHistoryRow(Record_Merge_Log__c log, Id unmergeFileId, Map<Id, String> recordNames) {
+        Id survivorId = toIdOrNull(log.Surviving_Record_Id__c);
+        Id restoredId = toIdOrNull(log.Restored_Record_Id__c);
+        Boolean survivorAvailable = survivorId != null && recordNames.containsKey(survivorId);
+
+        HistoryRow row = new HistoryRow();
+        row.logId = log.Id;
+        row.logName = log.Name;
+        row.objectApiName = log.Object_Api_Name__c;
+        row.objectLabel = getObjectLabel(log.Object_Api_Name__c);
+        row.abandonedId = log.Abandoned_Record_Id__c;
+        row.abandonedName = String.isNotBlank(log.Abandoned_Record_Name__c) ? log.Abandoned_Record_Name__c : log.Abandoned_Record_Id__c;
+        row.survivorId = log.Surviving_Record_Id__c;
+        row.survivorName = survivorAvailable ? recordNames.get(survivorId) : log.Surviving_Record_Id__c;
+        row.mergedOn = log.CreatedDate;
+        row.mergedByName = log.CreatedBy?.Name;
+        row.unmergedOn = log.Unmerged_On__c;
+        row.restoredId = log.Restored_Record_Id__c;
+        row.restoredName = restoredId != null && recordNames.containsKey(restoredId) ? recordNames.get(restoredId) : null;
+        row.unmergeFileId = unmergeFileId;
+        row.canUnmerge = log.Unmerged_On__c == null && unmergeFileId != null && survivorAvailable;
+
+        if (log.Unmerged_On__c != null) {
+            row.status = 'Unmerged';
+        } else if (unmergeFileId == null) {
+            row.status = 'Unmerge file deleted';
+        } else if (!survivorAvailable) {
+            row.status = 'Surviving record not available';
+        } else {
+            row.status = 'Can unmerge';
+        }
+        return row;
+    }
+
+    //Objects that have merge logs, for the object filter
+    private static List<ObjectOption> getHistoryObjectOptions() {
+        List<ObjectOption> options = new List<ObjectOption>();
+        for (AggregateResult aggregate : (List<AggregateResult>) Database.query(
+                'SELECT Object_Api_Name__c objectApiName FROM Record_Merge_Log__c GROUP BY Object_Api_Name__c LIMIT 200',
+                AccessLevel.USER_MODE)) {
+            String objectApiName = (String) aggregate.get('objectApiName');
+            if (String.isNotBlank(objectApiName)) {
+                options.add(new ObjectOption(objectApiName, getObjectLabel(objectApiName)));
+            }
+        }
+        return options;
+    }
+
+    private static String getObjectLabel(String objectApiName) {
+        Schema.SObjectType objectType = String.isBlank(objectApiName) ? null : Schema.getGlobalDescribe().get(objectApiName);
+        return objectType == null ? objectApiName : objectType.getDescribe(SObjectDescribeOptions.DEFERRED).getLabel();
+    }
+
+    /**
+     * getRecordNames()
+     * Record Id -> name for the records the user can see. Deleted and hidden records
+     * are left out; records without a name field map to their Id.
+     */
+    private static Map<Id, String> getRecordNames(Set<Id> recordIds) {
+        Map<Schema.SObjectType, Set<Id>> idsByType = new Map<Schema.SObjectType, Set<Id>>();
+        for (Id recordId : recordIds) {
+            Schema.SObjectType objectType = recordId.getSObjectType();
+            if (!idsByType.containsKey(objectType)) {
+                idsByType.put(objectType, new Set<Id>());
+            }
+            idsByType.get(objectType).add(recordId);
+        }
+
+        Map<Id, String> names = new Map<Id, String>();
+        for (Schema.SObjectType objectType : idsByType.keySet()) {
+            Schema.DescribeSObjectResult objectDescribe = objectType.getDescribe(SObjectDescribeOptions.DEFERRED);
+            String nameField = findNameField(objectDescribe);
+            String query = 'SELECT Id' + (nameField == null ? '' : ', ' + nameField) +
+                ' FROM ' + objectDescribe.getName() + ' WHERE Id IN :recordIds';
+            try {
+                for (SObject record : Database.queryWithBinds(query,
+                        new Map<String, Object>{ 'recordIds' => idsByType.get(objectType) }, AccessLevel.USER_MODE)) {
+                    Object name = nameField == null ? null : record.get(nameField);
+                    names.put(record.Id, name == null ? String.valueOf(record.Id) : String.valueOf(name));
+                }
+            } catch (Exception e) {
+                //No access to the object, so its records show as Ids
+                System.debug('Unable to read ' + objectDescribe.getName() + ' names: ' + e.getMessage());
+            }
+        }
+        return names;
+    }
+
+    private static String findNameField(Schema.DescribeSObjectResult objectDescribe) {
+        for (Schema.SObjectField field : objectDescribe.fields.getMap().values()) {
+            Schema.DescribeFieldResult fieldDescribe = field.getDescribe();
+            if (fieldDescribe.isNameField()) {
+                return fieldDescribe.getName();
+            }
+        }
+        return null;
+    }
+
+    private static void addId(Set<Id> recordIds, String value) {
+        Id recordId = toIdOrNull(value);
+        if (recordId != null) {
+            recordIds.add(recordId);
+        }
+    }
+
+    private static Id toIdOrNull(String value) {
+        if (String.isBlank(value)) {
+            return null;
+        }
+        try {
+            return Id.valueOf(value);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    //End - merge history
 
     //Start - unmerge
 
@@ -655,7 +852,7 @@ public with sharing class RecordUnmergeService {
         }
 
         //Log Id -> ContentDocument Id of its unmerge file
-        private Map<Id, Id> findUnmergeDocumentIds(List<Record_Merge_Log__c> logs) {
+        public Map<Id, Id> findUnmergeDocumentIds(List<Record_Merge_Log__c> logs) {
             Map<Id, String> titlesByLog = new Map<Id, String>();
             for (Record_Merge_Log__c log : logs) {
                 if (String.isNotBlank(log.Abandoned_Record_Id__c)) {
@@ -888,16 +1085,6 @@ public with sharing class RecordUnmergeService {
             }
             return target;
         }
-
-        private String findNameField(Schema.DescribeSObjectResult childDescribe) {
-            for (Schema.SObjectField field : childDescribe.fields.getMap().values()) {
-                Schema.DescribeFieldResult fieldDescribe = field.getDescribe();
-                if (fieldDescribe.isNameField()) {
-                    return fieldDescribe.getName();
-                }
-            }
-            return null;
-        }
     }
 
     private class UnmergeContext {
@@ -944,6 +1131,52 @@ public with sharing class RecordUnmergeService {
         public Object newValue;
         public String previousDisplay;
         public String newDisplay;
+    }
+
+    public class HistoryRequest {
+        public String objectApiName;
+        //available | unmerged | all (the default)
+        public String status;
+        //Matches the deleted record's name or the log name, or any of its record Ids exactly
+        public String searchText;
+        public Integer offsetSize;
+    }
+
+    public class HistoryResult {
+        public List<HistoryRow> rows = new List<HistoryRow>();
+        public Boolean hasMore = false;
+        public Integer nextOffset = 0;
+        //Only returned with the first page
+        public List<ObjectOption> objectOptions;
+    }
+
+    public class HistoryRow {
+        public Id logId;
+        public String logName;
+        public String objectApiName;
+        public String objectLabel;
+        public String abandonedId;
+        public String abandonedName;
+        public String survivorId;
+        public String survivorName;
+        public Datetime mergedOn;
+        public String mergedByName;
+        public Datetime unmergedOn;
+        public String restoredId;
+        public String restoredName;
+        public Id unmergeFileId;
+        public Boolean canUnmerge;
+        public String status;
+    }
+
+    public class ObjectOption {
+        public String value;
+        public String label;
+
+        public ObjectOption(String value, String label) {
+            this.value = value;
+            this.label = label;
+        }
     }
 
     public class UnmergeOption {

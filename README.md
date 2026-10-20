@@ -78,6 +78,12 @@ When a record has had other records merged into it, the component lists them und
 
 If the deleted record is still in the recycle bin it is undeleted and keeps its original Id. If it has been purged, it is recreated as a new record with a new Id. The Record Merge Log is stamped with **Unmerged On** and **Restored Record Id**, so a merge can only be unmerged once. Deleting the unmerge file from the log removes the option to unmerge.
 
+### Merge History tab
+
+The **Merge History** tab lists every merge, newest first, so a merge can be reversed without opening the surviving record or going through the recycle bin. Filter by object and status (*Can be unmerged*, *Unmerged* or *All merges*), or search by the deleted record's name, the merge log number, or any of the record Ids. Each row links to the surviving record, the restored record and the merge log. Click **Unmerge** on a row to open the same unmerge screen described above.
+
+To show the tab, add **Merge History** to an app's navigation items, or add the **Record Merge History** component to any App or Home page in the Lightning App Builder. The **Record Merge User** permission set makes the tab visible.
+
 Unmerging needs the same access as merging: edit access to this record, FLS on the fields that are written, and undelete (or create, if the record has to be recreated) access on the object.
 
 ## Merge history
@@ -101,6 +107,9 @@ Use the log to audit merges. The unmerge file is attached to it under **Files**.
 
 - `force-app/main/default/lwc/recordMerge` – the Lightning web component
 - `force-app/main/default/lwc/recordMergeFieldTable` – the field value picker table it uses
+- `force-app/main/default/lwc/recordUnmerge` – the unmerge screen, shared by the record page component and the history tab
+- `force-app/main/default/lwc/recordMergeHistory` – the Merge History tab
+- `force-app/main/default/lwc/recordMergeUtils` – helpers shared by the components
 - `force-app/main/default/classes/RecordMergeController.cls` – Apex entry point for the component
 - `force-app/main/default/classes/RecordMergeService.cls` – comparison, re-parenting and merge logic
 - `force-app/main/default/classes/RecordUnmergeService.cls` – unmerge file, preview and unmerge logic

@@ -87,6 +87,25 @@ public with sharing class RecordMergeController {
         }
     }
 
+    /**
+     * getMergeHistory()
+     * @param request Serialized RecordUnmergeService.HistoryRequest (all optional):
+     *   { "objectApiName": "Account", "status": "available", "searchText": "Acme", "offsetSize": 0 }
+     * @return Serialized RecordUnmergeService.HistoryResult
+     */
+    @AuraEnabled
+    public static String getMergeHistory(String request) {
+        try {
+            System.debug('***STARTING RecordMergeController.getMergeHistory***');
+            RecordUnmergeService.HistoryRequest historyRequest = String.isBlank(request)
+                ? new RecordUnmergeService.HistoryRequest()
+                : (RecordUnmergeService.HistoryRequest) JSON.deserialize(request, RecordUnmergeService.HistoryRequest.class);
+            return JSON.serialize(RecordUnmergeService.getMergeHistory(historyRequest));
+        } catch (Exception e) {
+            throw buildAuraException(e);
+        }
+    }
+
     private static AuraHandledException buildAuraException(Exception e) {
         System.debug('***EXCEPTION***');
         System.debug(e.getMessage());

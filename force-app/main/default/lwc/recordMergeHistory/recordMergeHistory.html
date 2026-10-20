@@ -1,0 +1,91 @@
+<template>
+    <lightning-card title={title} icon-name="standard:merge">
+        <template lwc:if={isListMode}>
+            <lightning-button-icon
+                slot="actions"
+                icon-name="utility:refresh"
+                alternative-text="Refresh"
+                title="Refresh"
+                disabled={isLoading}
+                onclick={handleRefresh}>
+            </lightning-button-icon>
+        </template>
+
+        <div class="slds-var-p-horizontal_medium history-container">
+            <template lwc:if={errorMessage}>
+                <div class="slds-notify slds-notify_alert slds-alert_error slds-var-m-bottom_small" role="alert">
+                    <h2>{errorMessage}</h2>
+                </div>
+            </template>
+
+            <!-- List of merges -->
+            <template lwc:if={isListMode}>
+                <template lwc:if={isLoading}>
+                    <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+                </template>
+
+                <div class="slds-grid slds-wrap slds-gutters_x-small slds-grid_vertical-align-end">
+                    <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                        <lightning-input
+                            type="search"
+                            label="Search"
+                            placeholder="Deleted record name, log number or record Id"
+                            value={searchText}
+                            onchange={handleSearchChange}>
+                        </lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-4">
+                        <lightning-combobox
+                            label="Object"
+                            options={objectFilterOptions}
+                            value={objectApiName}
+                            onchange={handleObjectChange}>
+                        </lightning-combobox>
+                    </div>
+                    <div class="slds-col slds-size_1-of-2 slds-medium-size_1-of-4">
+                        <lightning-combobox
+                            label="Status"
+                            options={statusOptions}
+                            value={status}
+                            onchange={handleStatusChange}>
+                        </lightning-combobox>
+                    </div>
+                    <div class="slds-col slds-grow slds-text-align_right slds-text-color_weak slds-var-p-bottom_x-small">
+                        {countLabel}
+                    </div>
+                </div>
+
+                <div class="slds-var-m-top_medium history-table">
+                    <template lwc:if={hasRows}>
+                        <lightning-datatable
+                            key-field="logId"
+                            data={rows}
+                            columns={columns}
+                            hide-checkbox-column
+                            wrap-text-max-lines="3"
+                            onrowaction={handleRowAction}>
+                        </lightning-datatable>
+                        <template lwc:if={hasMore}>
+                            <div class="slds-var-m-top_small slds-text-align_center">
+                                <lightning-button label="Load more" disabled={isLoading} onclick={handleLoadMore}></lightning-button>
+                            </div>
+                        </template>
+                    </template>
+                    <template lwc:elseif={isLoading}></template>
+                    <template lwc:else>
+                        <p class="slds-text-color_weak slds-var-p-vertical_medium">No merges match these filters.</p>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Unmerge -->
+            <template lwc:if={isUnmergeMode}>
+                <c-record-unmerge
+                    log-id={unmergeLogId}
+                    onunmerged={handleUnmerged}
+                    oncancel={handleUnmergeCancel}>
+                </c-record-unmerge>
+            </template>
+        </div>
+    </lightning-card>
+</template>

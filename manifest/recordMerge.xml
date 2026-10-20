@@ -26,6 +26,7 @@
         <name>CustomObject</name>
     </types>
     <types>
+        <members>Record_Merge_History</members>
         <members>Record_Merge_Log__c</members>
         <name>CustomTab</name>
     </types>
@@ -40,6 +41,9 @@
     <types>
         <members>recordMerge</members>
         <members>recordMergeFieldTable</members>
+        <members>recordMergeHistory</members>
+        <members>recordMergeUtils</members>
+        <members>recordUnmerge</members>
         <name>LightningComponentBundle</name>
     </types>
     <types>
